@@ -1,0 +1,157 @@
+---
+title: "Accessing GBIF data"
+author: "Denisse Fierro Arcos"
+date: "2022-05-05"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Accessing biological data from GBIF
+
+[GBIF](https://www.gbif.org/) (Global Biodiversity Information Facility) is a global organisation that aims to providing open access data about life (from bacteria to large vertebrate) on Earth to anyone with an internet connection. To facilitate data analysis, GBIF uses Darwin Core data standards.  
+  
+In this notebook, we will go through the steps necessary to searching and downloading biological data for a particular species of interest. Before going any further, remember that you must have the following:  
+* Create a free [GBIF](https://www.gbif.org/) account: Make sure you remember your username, email and password.  
+* Download the `rgbif`, `tidyverse` and `usethis` packages.  
+  
+If you are missing any of the above packages, remember that you can install them using the `install.packages("name_of_package")` function. Do not forget to use the name of the package you want to install in between the quotation marks `""`.
+
+
+## Introduce yourself to `rgbif`
+To be able to download data from GBIF, you must first identify yourself by providing your login details. To avoid writing down this information every time we download data, we can record this in our `.Renviron` file. This file is used to create environmental variables containing sensitive information like usernames and password that can be accessed by `R` only. This way you can share your scripts and keep your login details secured. To edit or create your `.Renviron` file, we will use the `usethis` package.
+
+```{r renv, message = F}
+usethis::edit_r_environ()
+```
+
+This will open a new tab titled `.Renviron` which will be blank if it is the first time you are editing it, or if you have edit it before, it will contain previously saved environmental variables. To record your GBIF login details, use the following code (make sure to include your own login details):
+
+```{r introduction}
+GBIF_USER="your_username"
+GBIF_PWD="your_password"
+GBIF_EMAIL="your_email@email.com"
+```
+
+You will need to restart your R session for these changes to take effect. You can do this by going to the `Session -> Restart R` or using the keyboard shortcut `Ctrl+Shift+F10`.
+
+
+## Querying and loading GBIF data 
+
+To do this we will need to load a couple of libraries.
+
+```{r libraries, warning = FALSE}
+library(rgbif)
+library(tidyverse)
+```
+
+Now we are ready to start our search. Let's say we are interested in finding out data for the *Scalloped Hammerhead* (**Sphyrna lewini**) in Australia. The first step is to find the **taxon key** for our species of interest.
+
+```{r taxon_key_search}
+#We must use the scientific name in our search. We can also search by other taxonomic levels. For more information use ?name_backbone
+slewini_key <- name_backbone(name = "Sphyrna lewini")
+
+#Let's see the results
+slewini_key %>% 
+  glimpse()
+```
+
+With the taxon key we can start our search.
+```{r query}
+#We will use the function pred to build our query
+#We will search for Sphyrna lewini
+slewini_query <- occ_download(pred("taxonKey", slewini_key$usageKey),
+                            #We will keep records for Australia only
+                            pred("country", "AU"),
+                            #We will keep presence data only
+                            pred("occurrenceStatus", "PRESENT"),
+                            #We will keep georeferenced records only
+                            pred("hasCoordinate", TRUE),
+                            format = )
+```
+
+We can check the status of our download query now.
+```{r check_status}
+occ_download_wait(slewini_query)
+```
+
+Now we are ready to download the dataset we are interested in.
+
+```{r download, message = F}
+#This section downloads a zip file to disk
+slewini_aus <- occ_download_get(key = slewini_query, path = "Data/",
+                                overwrite = T) %>% 
+  #This section loads zip file into memory
+  occ_download_import(slewini_australia_gbif, path = "Data/",
+                      na.strings = c("", NA))
+```
+
+
+## Manipulating GBIF data in R
+
+We can check the column names of the dataset we just downloaded.
+```{r check_data}
+slewini_aus %>% 
+  glimpse()
+```
+
+
+### Summarising GBIF data
+We could keep only the columns we are interested in if we wish. But we can create summary tables with a few lines. We can get the number of observations by sex and life stage for example.
+```{r query_data}
+slewini_aus %>% 
+  count(sex, lifeStage)
+```
+
+We can see here that most records do not include information about sex or life stage. We can also check records by state.
+```{r}
+slewini_aus %>% 
+  count(stateProvince)
+```
+
+Most records do not include information about the state where these animals were observed. Let's make a plot of records by year.
+```{r}
+#Let's check the type of quantity recorded
+unique(slewini_aus$organismQuantityType)
+```
+
+This means we can simply add the columns individual count and organism quantity.  
+You can check the definition of each column included in the downloaded GBIF dataset [here](https://www.gbif.org/data-quality-requirements-occurrences#dcCount).
+
+## Plotting GBIF data
+```{r}
+slewini_aus %>% 
+  #We will change NA values in both columns to 0
+  mutate(individualCount = replace_na(individualCount, 0),
+         organismQuantity =  replace_na(organismQuantity, 0),
+         #Then we will create a new column with the sum of these two columns
+         count = rowSums(across(individualCount:organismQuantity))) %>% 
+  #Now we will change any rows with zero values to one because we selected
+  #to include presence data only in our search. This means that each row
+  #represents one individual
+  mutate(count = case_when(count == 0 ~ 1,
+                           T ~ count)) %>% 
+  #Remove observations without years
+  drop_na(year) %>% 
+  #We make a summary table by year
+  group_by(year) %>% 
+  summarise(n = sum(count)) %>% 
+  #Now we create a plot
+  ggplot(aes(y = n, x = year))+
+  geom_point()+
+  geom_line()+
+  theme_bw()+
+  labs(y = "Number of individuals",
+       x = "Years",
+       title = expression(paste("Ocurrence of ", 
+                          italic("Sphyrna lewini"),
+                          " in Australia")),
+       caption = "*Excludes observations for which there is no year recorded")+
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
+
+
+
