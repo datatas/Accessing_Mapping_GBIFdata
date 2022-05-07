@@ -1,0 +1,243 @@
+---
+title: "Accessing GBIF data"
+author: "Denisse Fierro Arcos"
+date: "2022-05-05"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Mapping biological data from GBIF
+
+Now that we can search and download data from GBIF using the `rgbif` package, we can use it to create maps. This way we can see the distribution of a particular species across space. Even better, we will make this an interactive map using the `leaflet` library.
+
+Before we continue, it is important to remember that in order to create maps, all observations must be georeferenced. That is, all observations must include coordinates (latitude and longitude) of the place where the observation was obtained.
+
+
+## Load relevant libraries
+
+As mentioned before, we will be using `leaflet` to create our interactive maps, and we will using the `tidyverse` library to manipulate our data, just as we did in the previous notebook.
+
+```{r libaries, warning = FALSE, message = FALSE}
+library(tidyverse)
+library(leaflet)
+```
+
+## Loading data
+
+In the previous notebook we saved the dataset we downloaded, so now we will load this file.
+
+```{r load_data, warning = F, message = F}
+slewini_aus <- read_csv("Data/Slewini_Australia.csv")
+```
+
+## Cleaning data
+We will create a new column with the sum of observations per row as we did in the previous notebook, but this time we will save the result in a new variable.
+
+```{r}
+slewini_map <- slewini_aus %>% 
+  #We will change NA values in both columns to 0
+  mutate(individualCount = replace_na(individualCount, 0),
+         organismQuantity =  replace_na(organismQuantity, 0),
+         #Then we will create a new column with the sum of these two columns
+         count = rowSums(across(individualCount:organismQuantity))) %>% 
+  #Now we will change any rows with zero values to one because we selected
+  #to include presence data only in our search. This means that each row
+  #represents one individual
+  mutate(count = case_when(count == 0 ~ 1,
+                           T ~ count)) %>% 
+  #Let's select only the columns we are interested in plotting
+  select(count, decimalLatitude, decimalLongitude) %>% 
+  #We will rename the latitude and longitude columns so leaflet can
+  #recognise them as coordinates
+  rename(latitude = decimalLatitude, longitude = decimalLongitude) %>% 
+  #Finally, if observations have the same latitude and longitude, we will
+  #add up their counts
+  group_by(latitude, longitude) %>% 
+  summarise(n = sum(count))
+```
+
+
+### Checking for issues in our data
+
+Before we continue, a word of caution. For the purposes of this workshop, we are assuming that all information in our dataset is accurate. However, there may be imprecisions in this data, so GBIF has included an `issue` column explaining any known issues with the data. 
+
+Let's look at the unique issues reported in our dataset.
+
+```{r issues}
+slewini_aus %>% 
+  #We select the "issue" column
+  select(issue) %>% 
+  #Only include unique entries
+  distinct()
+```
+
+Some of these issues are straightforward to understand, but others not so much. We can get a full explanation of each issue using the `gbif_issues_lookup()` function.
+
+```{r issue_check}
+rgbif::gbif_issues_lookup(issue = "GEODETIC_DATUM_ASSUMED_WGS84") %>% 
+  #This function prints the content of the description column
+  pull(description)
+```
+
+We could even check how many observations have issues reported in our dataset.
+
+```{r issues_obs}
+slewini_aus %>% 
+  #We drop any rows with no information in the issue column
+  drop_na(issue) %>% 
+  #Finally we count them
+  count()
+```
+
+There are issues reported for most entries in our dataset, but should this be a cause of concern? That would depend on the issue reported and our tolerance for imprecision. Now you have some tools available to help you make a decision.
+
+
+## Mapping data
+
+As explained before, we will ignore any reported issues in our data and assume that they are all valid. 
+
+```{r map_test}
+#Let's create a smaller sample of our data to test our map
+slewini_map %>% 
+  slice_sample(prop = .10) %>% 
+  leaflet() %>% 
+  #We add a base map
+  addTiles() %>% 
+  #We add markers to our observations
+  addMarkers(~longitude, ~latitude, 
+             #We show some information in the pop up. We will include
+             #the counts, but we must transform them to strings first
+             popup = as.character(slewini_map$n))
+```
+
+Our map is looking good, so we can good ahead and plot all observations.
+
+```{r map}
+#Let's create a smaller sample of our data to test our map
+leaflet(slewini_map) %>% 
+  #We add a base map
+  addTiles() %>% 
+  #We add markers to our observations
+  addMarkers(~longitude, ~latitude, 
+             #We show some information in the pop up. We will include
+             #the counts, but we must transform them to strings first
+             popup = as.character(slewini_map$n))
+```
+
+It seems like we have an error, there is an observation that clearly does not belong to Australia. We need to refer to our full dataset and identify the observations with the smallest longitude values.
+
+```{r}
+slewini_aus %>% 
+  #We filter rows with the smallest longitude value
+  filter(decimalLongitude == min(decimalLongitude)) %>% 
+  #We select only a few columns
+  select(decimalLatitude, decimalLongitude, issue)
+```
+
+We can then check what these issues are telling us. It seems the first issue may be relevant to us.
+
+```{r}
+rgbif::gbif_issues_lookup("COUNTRY_COORDINATE_MISMATCH") %>% 
+  pull(description)
+```
+
+We have confirmed that there is a known issue with these observations, so we will remove them from our map data and plot them again.
+
+```{r}
+slewini_map %>% 
+  filter(longitude != min(.$longitude)) %>% 
+  leaflet() %>% 
+  #We add a base map
+  addTiles() %>% 
+  #We add markers to our observations
+  addMarkers(~longitude, ~latitude, 
+             #We show some information in the pop up. We will include
+             #the counts, but we must transform them to strings first
+             popup = as.character(slewini_map$n))
+```
+
+
+### Mapping clustered data
+
+We can also make map showing clusters where sharks are observed most often. To do this, we must first expand our map data so each row represents a single observation. First, let's find out how data observations we have in our dataset.
+
+```{r}
+sum(slewini_map$n)
+```
+
+This is not what we expected. We should have whole numbers only. Let's look into our main dataset.
+
+```{r}
+slewini_aus %>% 
+  filter(individualCount %% 1 != 0 | organismQuantity %% 1 != 0) %>% 
+  select(individualCount, organismQuantity, organismQuantityType)
+```
+
+They were definitely meant to be individuals, so they were recorded incorrectly. We will remove these from our dataset.
+
+```{r}
+new_slewini_map <- slewini_aus %>% 
+  #we remove observations outside Australian waters
+  filter(decimalLongitude != min(decimalLongitude)) %>% 
+  #We will change NA values in both columns to 0
+  mutate(individualCount = replace_na(individualCount, 0),
+         organismQuantity =  replace_na(organismQuantity, 0),
+         #Then we will create a new column with the sum of these two columns
+         count = rowSums(across(individualCount:organismQuantity))) %>% 
+  #Now we will change any rows with zero values to one because we selected
+  #to include presence data only in our search. This means that each row
+  #represents one individual
+  mutate(count = case_when(count == 0 ~ 1,
+                           T ~ count)) %>% 
+  #we remove the rows with decimal values included as counts
+  filter(count %% 1 == 0) %>% 
+  #Let's select only the columns we are interested in plotting
+  select(count, decimalLatitude, decimalLongitude) %>% 
+  #We will rename the latitude and longitude columns so leaflet can
+  #recognise them as coordinates
+  rename(latitude = decimalLatitude, longitude = decimalLongitude)
+```
+
+Now we can check how many observations we have recorded.
+
+```{r}
+sum(new_slewini_map$count)
+```
+
+Now let's expand our dataset and ensure that our number of rows matches the number of observations.
+
+```{r}
+new_slewini_map <- new_slewini_map %>% 
+  uncount(count)
+```
+
+Great! Now we have the data ready for calculating clusters and mapping them.
+
+```{r}
+#We start up the map as before
+map_slewini <- new_slewini_map %>% 
+  mutate(num = 1) %>% 
+  leaflet() %>% 
+  #Add a base layer
+  addTiles() %>% 
+  #We will use circles instead of markers
+  addCircleMarkers(~longitude, ~latitude, popup = as.character(slewini_map$n), 
+                   #We set the radius and opacity of our circles
+                   radius = 1, fillOpacity = 0.5, 
+                   #We calculate the clusters
+                   clusterOptions = markerClusterOptions())
+map_slewini
+```
+
+Once we are happy with the result, we can save the map. Just make sure that you have saved the map to a variable.
+
+```{r}
+htmlwidgets::saveWidget(map_slewini, file = "Map/Slewini_Australia.html")
+```
+
+
+
+

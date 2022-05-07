@@ -97,6 +97,11 @@ slewini_aus %>%
   glimpse()
 ```
 
+Before we continue, we will save a copy of this dataset into our disk.
+```{r save_data}
+write.csv(slewini_aus, file = "Data/Slewini_Australia.csv", row.names = F)
+```
+
 
 ### Summarising GBIF data
 We could keep only the columns we are interested in if we wish. But we can create summary tables with a few lines. We can get the number of observations by sex and life stage for example.
