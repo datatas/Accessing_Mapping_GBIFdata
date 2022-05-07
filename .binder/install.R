@@ -1,0 +1,10 @@
+install.packages(
+  "htmlwidgets",
+  "knitr",
+  "leaflet",
+  "renv",
+  "rgbif",
+  "rmarkdown",
+  "tidyverse",
+  "usethis"
+)

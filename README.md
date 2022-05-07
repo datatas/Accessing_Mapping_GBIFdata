@@ -1,6 +1,8 @@
 # Accessing_Mapping_GBIFdata
 
-[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/datatas/Accessing_Mapping_GBIFdata/HEAD)
+<!-- badges: start -->
+[![Launch Rstudio Binder](http://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/datatas/Accessing_Mapping_GBIFdata/master?urlpath=rstudio)
+<!-- badges: end -->
 
 GBIF (Global Biodiversity Information Facility) is a global organisation that aims to providing open access data about life (from bacteria to large vertebrate) on Earth to anyone with an internet connection. To facilitate data analysis, GBIF uses [Darwin Core](https://www.gbif.org/darwin-core) data standards.
 
