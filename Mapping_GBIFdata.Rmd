@@ -20,7 +20,7 @@ Before we continue, it is important to remember that in order to create maps, al
 
 As mentioned before, we will be using `leaflet` to create our interactive maps, and we will using the `tidyverse` library to manipulate our data, just as we did in the previous notebook.
 
-```{r libaries, warning = FALSE, message = FALSE}
+```{r libaries, warning = F, message = F}
 library(tidyverse)
 library(leaflet)
 ```
@@ -235,6 +235,11 @@ map_slewini
 Once we are happy with the result, we can save the map. Just make sure that you have saved the map to a variable.
 
 ```{r}
+#Check if Map folder exists, otherwise create a new one
+if(!dir.exists("Map")){
+  dir.create("Map")}
+
+#Save map
 htmlwidgets::saveWidget(map_slewini, file = "Map/Slewini_Australia.html")
 ```
 

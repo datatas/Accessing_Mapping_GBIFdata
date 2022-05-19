@@ -40,6 +40,3 @@ vignettes/*.pdf
 
 #Folder containing map information
 Map/
-
-#Any html files
-*.html

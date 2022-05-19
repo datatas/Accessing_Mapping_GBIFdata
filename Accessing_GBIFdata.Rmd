@@ -42,7 +42,7 @@ You will need to restart your R session for these changes to take effect. You ca
 
 To do this we will need to load a couple of libraries.
 
-```{r libraries, warning = FALSE}
+```{r libraries, warning = F, message = F}
 library(rgbif)
 library(tidyverse)
 ```
